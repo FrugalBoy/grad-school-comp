@@ -22,12 +22,20 @@ EXPERIENCE_LEVEL_TRANSLATIONS = {
     '30 or more years': 30.0
 }
 
-EDUCATION_TYPES = [
-    "Associate degree",
-    "Bachelor’s degree (BA, BS, B.Eng., etc.)",
-    "Master’s degree (MA, MS, M.Eng., MBA, etc.)",
-    "Other doctoral degree (Ph.D, Ed.D., etc.)"
-]
+EDUCATION_TYPE_EQUIVALENCE_CLASSES = {
+    "Associate" : frozenset({"Associate degree", "Associate degree (A.A., A.S., etc.)"}),
+    "Bachelor's" : frozenset({"Bachelor’s degree (BA, BS, B.Eng., etc.)", "Bachelor’s degree (B.A., B.S., B.Eng., etc.)"}),
+    "Master's" : frozenset({"Master’s degree (MA, MS, M.Eng., MBA, etc.)", "Master’s degree (M.A., M.S., M.Eng., MBA, etc.)"}),
+    "Doctorate" : frozenset({"Other doctoral degree (Ph.D, Ed.D., etc.)", "Other doctoral degree (Ph.D., Ed.D., etc.)"}),
+}
+
+# EDUCATION_TYPES_2020 = {
+# 'I never completed any formal education',
+# 'Some college/university study without earning a degree',
+# 'Professional degree (JD, MD, etc.)',
+# 'Secondary school (e.g. American high school, German Realschule or Gymnasium, etc.)',
+# 'Primary/elementary school',
+# }
 
 def get_united_states_professionals_2018():
     df = pd.read_csv("2018/survey_results_public.zip")
@@ -40,10 +48,19 @@ def get_united_states_professionals_2019():
     professionals_2019 = survey_results_2019[(survey_results_2019["Country"] == "United States") & (survey_results_2019["CurrencySymbol"] == "USD")]
     return professionals_2019[["EdLevel", "YearsCodePro", "ConvertedComp"]]
 
+
+def get_united_states_professionals_2020():
+    survey_results_2020 = pd.read_csv("2020/survey_results_public.zip")
+    professionals_2020 = survey_results_2020[(survey_results_2020["Country"] == "United States") & (survey_results_2020["CurrencySymbol"] == "USD")]
+    return professionals_2020[["EdLevel", "YearsCodePro", "ConvertedComp"]]
+
 def get_united_states_professionals():
     professionals_2018 = get_united_states_professionals_2018()
     professionals_2019 = get_united_states_professionals_2019()
-    return pd.concat([professionals_2018, professionals_2019])
+    professionals_2020 = get_united_states_professionals_2020()
+
+    # return professionals_2020
+    return pd.concat([professionals_2018, professionals_2019, professionals_2020])
 
 def get_logarithmic_points(coefficients):
     return np.array([np.log(x_)*coefficients[0] + coefficients[1] for x_ in DOMAIN])
@@ -70,8 +87,8 @@ if __name__ == "__main__":
     us_professionals = get_united_states_professionals()
     us_professionals["YearsCodePro"] = pd.to_numeric(us_professionals["YearsCodePro"].apply(lambda x: EXPERIENCE_LEVEL_TRANSLATIONS[x] if x in EXPERIENCE_LEVEL_TRANSLATIONS else x))
     max_y = 0
-    for education_type in EDUCATION_TYPES:
-        population = us_professionals[us_professionals["EdLevel"] == education_type]
+    for education_level, equivalence_class in EDUCATION_TYPE_EQUIVALENCE_CLASSES.items():
+        population = us_professionals[us_professionals["EdLevel"].isin(equivalence_class)]
         years_worked = pd.to_numeric(population["YearsCodePro"].dropna())
         comps = pd.to_numeric(population["ConvertedComp"].dropna())
         median_annual_compensation = np.median(comps)
@@ -84,13 +101,14 @@ if __name__ == "__main__":
                 y.append(float('nan')) # will forward-fill these nan values
         y = normalize_to_size(y, MAX_YEARS)
         log_fit_parameters = np.polyfit(np.log(DOMAIN), y, 1)
-        plt.plot(DOMAIN, get_logarithmic_points(log_fit_parameters), label=education_type)
+        plt.plot(np.asarray(DOMAIN) - 1, get_logarithmic_points(log_fit_parameters), label=education_level)
         # plt.plot(DOMAIN, y, label=education_type + " Raw Points")
         max_y = max(max_y, np.max(get_logarithmic_points(log_fit_parameters)))
     plt.legend()
     plt.xlabel("Years Of Professional Coding")
     plt.ylabel("Annual Compensation (USD)")
-    plt.title("Coding Pros' Comp by Level of Ed. (2018 & 2019)")
+    plt.title("Coding Pros' Comp by Level of Ed. ('18, '19, & '20)")
     plt.grid()
-    plt.yticks(np.arange(0, 170000, 10000))
+    plt.yticks(np.arange(0, 180000, 10000))
+    plt.xticks(np.arange(0, 31, step=2.0))
     plt.savefig("ed_level_compensation_per_year.png")
